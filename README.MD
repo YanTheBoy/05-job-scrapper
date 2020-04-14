@@ -6,6 +6,11 @@ Python3 should be already installed. Then use pip (or pip3, if there is a confli
 ```bash
 $ pip install -r requirements.txt
 ```
+For script correct working you should get your personal API APP ID from [SuperJob](https://api.superjob.ru/) 
+and put this APP ID into .env file in local folder.
+```text
+SUPERJOB_API_APP_ID=your_app_id
+```
 
 Run salary-predictor.py for creating tables with all needed data:
 ```bash

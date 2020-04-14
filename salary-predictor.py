@@ -1,14 +1,16 @@
 import requests
 from terminaltables import AsciiTable
 from itertools import count
+import os
+from dotenv import load_dotenv
 
 
-def get_response_from_hh(prog_language):
-    data_for_all_vacancies = []
+def get_response_hh(programming_language):
+    hh_vacancies_substance = []
     url = 'https://api.hh.ru/vacancies'
     for page in count(0):
         params = {
-            'text': 'NAME:({})'.format(prog_language),  # strict requirement for job name
+            'text': 'NAME:({})'.format(programming_language),
             'area': '1',
             'period': '30',
             'only_with_salary': 'True',
@@ -17,18 +19,18 @@ def get_response_from_hh(prog_language):
         }
 
         page_response = requests.get(url, params=params)
-        page_data = page_response.json()
-        data_for_all_vacancies = data_for_all_vacancies + page_data['items']
-        if page >= page_data['pages']-1:
+        page_content = page_response.json()
+        hh_vacancies_substance = hh_vacancies_substance + page_content['items']
+        if page >= page_content['pages']-1:
             break
-    return data_for_all_vacancies
+    return hh_vacancies_substance
 
 
-def get_salary_data_hh(all_vacancies_data):
-    jobs_salary_data = []
-    for vacancy_data in all_vacancies_data:
-        jobs_salary_data.append(vacancy_data['salary'])
-    return jobs_salary_data
+def get_salaries_hh(all_vacancies):
+    jobs_salary = []
+    for vacancy in all_vacancies:
+        jobs_salary.append(vacancy['salary'])
+    return jobs_salary
 
 
 def predict_rub_salary_hh(salary_range):
@@ -44,29 +46,29 @@ def predict_rub_salary_hh(salary_range):
     return prediction_salary
 
 
-def get_response_from_superjob(programming_language):
-    api_app_id = 'v3.r.132210005.c41212ae279030508ca55841058cf52f9bccc0ff.5d64230d7fd9c48069d3260b0f3cca85b9266cf1'
-    data_for_all_vacancies = []
+def get_response_superjob(programming_language, application_id):
+    app_id = application_id
+    sj_vacancies_substance = []
     url = 'https://api.superjob.ru/2.30/vacancies/'
 
     for page in count(0):
         params = {
             'page': page,
             'count': '100',
-            'town': '4',    # id4 for Moscow
-            'no_agreement': '1',    # not show vacancies without salary
-            'catalogues[]': '48',    # professional code id
-            'keywords[srws][]': '1',    # keywords find only in vacancy name
+            'town': '4',
+            'no_agreement': '1',
+            'catalogues[]': '48',
+            'keywords[srws][]': '1',
             'keywords[keys][]': programming_language
         }
 
-        page_response = requests.get(url, headers={'X-Api-App-Id': api_app_id}, params=params)
-        page_data = page_response.json()
-        data_for_all_vacancies = data_for_all_vacancies + page_data['objects']
-        if page_data['more'] is False:
+        page_response = requests.get(url, headers={'X-Api-App-Id': app_id}, params=params)
+        page_content = page_response.json()
+        sj_vacancies_substance = sj_vacancies_substance + page_content['objects']
+        if page_content['more'] is False:
             break
 
-    return list(filter(None, data_for_all_vacancies))
+    return list(filter(None, sj_vacancies_substance))
 
 
 def predict_rub_salary_sj(salary_range):
@@ -110,25 +112,27 @@ def get_average_salary(expected_salary):
     }
 
 
-def create_table_data(jobs_data):
-    table_data = [[
+def create_table(jobs_payroll):
+    table = [[
         'Язык программирования',
         'Вакансий найдено',
         'Вакансий обработано',
         'Средняя зарплата'
     ]]
-    for program_lang, salaries in jobs_data.items():
-        table_data.append([
+    for program_lang, salaries in jobs_payroll.items():
+        table.append([
             program_lang,
             salaries['vacancies_found'],
             salaries['vacancies_processed'],
             salaries['average_salary']
         ]
         )
-    return table_data
+    return table
 
 
 if __name__ == '__main__':
+    load_dotenv()
+    api_app_id = os.getenv('SUPERJOB_API_APP_ID')
     programming_languages = [
         '1C',
         'Java',
@@ -141,24 +145,24 @@ if __name__ == '__main__':
         'Scala'
     ]
 
-    sj_salary_data = {}    # create dicts for final salary data
-    hh_salary_data = {}    # -//-
+    sj_predict_salary = {}
+    hh_predict_salary = {}
 
     for language in programming_languages:
-        sj_vacancies_data = get_response_from_superjob(language)
-        sj_salary_range = predict_rub_salary_sj(sj_vacancies_data)    # get salary list
-        sj_salary_data[language] = get_average_salary(sj_salary_range)
+        sj_vacancies_description = get_response_superjob(language, api_app_id)
+        sj_salary_range = predict_rub_salary_sj(sj_vacancies_description)
+        sj_predict_salary[language] = get_average_salary(sj_salary_range)
 
-        hh_vacancies_data = get_response_from_hh(language)
-        hh_salary_range = get_salary_data_hh(hh_vacancies_data)    # get salary list
+        hh_vacancies_description = get_response_hh(language)
+        hh_salary_range = get_salaries_hh(hh_vacancies_description)
         hh_expected_salary = predict_rub_salary_hh(hh_salary_range)
-        hh_salary_data[language] = get_average_salary(hh_expected_salary)
+        hh_predict_salary[language] = get_average_salary(hh_expected_salary)
 
-    salary_data_for_table_sj = create_table_data(sj_salary_data)    # create data for table
-    salary_data_for_table_hh = create_table_data(hh_salary_data)    # -//-
+    sj_tabla_filling = create_table(sj_predict_salary)
+    hh_table_filling = create_table(hh_predict_salary)
 
-    sj_table_instance = AsciiTable(salary_data_for_table_sj, title='SuperJob Moscow')
-    hh_table_instance = AsciiTable(salary_data_for_table_hh, title='HeadHunter Moscow')
+    sj_table_instance = AsciiTable(sj_tabla_filling, title='SuperJob Moscow')
+    hh_table_instance = AsciiTable(hh_table_filling, title='HeadHunter Moscow')
 
     print(sj_table_instance.table)
     print(hh_table_instance.table)
